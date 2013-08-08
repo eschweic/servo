@@ -605,7 +605,8 @@ impl ScriptTask {
                                                                  url.clone(),
                                                                  self.resource_task.clone(),
                                                                  self.image_cache_task.clone(),
-                                                                 page.next_subpage_id.clone());
+                                                                 page.next_subpage_id.clone(),
+                                                                 self.constellation_chan.clone());
 
         let HtmlParserResult {root, js_port, style_port, iframe_port} = html_parsing_result;
 
