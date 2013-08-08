@@ -37,15 +37,9 @@ use newcss::stylesheet::Stylesheet;
 
 use js::jsapi::{JSContext, JSObject};
 
-use std::util::replace;
 use std::cell::Cell;
 use std::comm;
 use std::str::eq_slice;
-use extra::net::url::Url;
-use geom::size::Size2D;
-use geom::rect::Rect;
-
-use servo_msg::constellation_msg::{ConstellationChan, FrameRectMsg, PipelineId, SubpageId};
 
 pub struct Element {
     parent: Node<ScriptView>,
