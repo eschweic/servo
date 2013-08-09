@@ -249,6 +249,7 @@ impl CompositorTask {
             let window_size_page = Size2D(window_size.width as f32 / world_zoom,
                                           window_size.height as f32 / world_zoom);
             for compositor_layer.mut_iter().advance |layer| {
+                println(fmt!("getting buffer request for %?", layer.pipeline.id));
                 recomposite = layer.get_buffer_request(Rect(Point2D(0f32, 0f32), window_size_page),
                                                        world_zoom) || recomposite;
             }
@@ -313,6 +314,7 @@ impl CompositorTask {
                     }
 
                     SetLayerPageSize(id, new_size) => {
+                        println(fmt!("Compositor: id %? sent new layer of size %?", id, new_size));
                         match compositor_layer {
                             Some(ref mut layer) => {
                                 let page_window = Size2D(window_size.width as f32 / world_zoom,

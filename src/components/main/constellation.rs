@@ -18,7 +18,7 @@ use gfx::opts::Opts;
 use pipeline::Pipeline;
 use servo_msg::constellation_msg::{ConstellationChan, ExitMsg, FrameRectMsg};
 use servo_msg::constellation_msg::{InitLoadUrlMsg, LoadIframeUrlMsg, LoadUrlMsg};
-use servo_msg::constellation_msg::{Msg, NavigateMsg};
+use servo_msg::constellation_msg::{Msg, NavigateMsg, NavigationType};
 use servo_msg::constellation_msg::{PipelineId, RendererReadyMsg, ResizedWindowMsg, SubpageId};
 use servo_msg::constellation_msg;
 use script::script_task::{SendEventMsg, ResizeInactiveMsg, ExecuteMsg};
@@ -160,6 +160,9 @@ impl ChildFrameTree {
     }
 }
 
+/// An iterator over a frame tree, returning nodes in depth-first order.
+/// Note that this iterator should _not_ be used to mutate nodes _during_
+/// iteration. Mutating nodes once the iterator is out of scope is OK.
 pub struct FrameTreeIterator {
     priv stack: ~[@mut FrameTree],
 }
@@ -168,7 +171,7 @@ impl Iterator<@mut FrameTree> for FrameTreeIterator {
     fn next(&mut self) -> Option<@mut FrameTree> {
         if !self.stack.is_empty() {
             let next = self.stack.pop();
-            for next.children.iter().advance |&ChildFrameTree { frame_tree, _ }| {
+            for next.children.rev_iter().advance |&ChildFrameTree { frame_tree, _ }| {
                 self.stack.push(frame_tree);
             }
             Some(next)
@@ -182,6 +185,7 @@ impl Iterator<@mut FrameTree> for FrameTreeIterator {
 struct FrameChange {
     before: Option<PipelineId>,
     after: @mut FrameTree,
+    navigation_type: NavigationType,
 }
 
 /// Stores the Id's of the pipelines previous and next in the browser's history
@@ -383,7 +387,7 @@ impl Constellation {
         if url.path.ends_with(".js") {
             pipeline.script_chan.send(ExecuteMsg(pipeline.id, url));
         } else {
-            pipeline.load(url, Some(constellation_msg::Load));
+            pipeline.load(url);
 
             self.pending_frames.push(FrameChange{
                 before: None,
@@ -392,6 +396,7 @@ impl Constellation {
                     parent: None,
                     children: ~[],
                 },
+                navigation_type: constellation_msg::Load,
             });
         }
         self.pipelines.insert(pipeline.id, pipeline);
@@ -521,7 +526,7 @@ impl Constellation {
         if url.path.ends_with(".js") {
             pipeline.execute(url);
         } else {
-            pipeline.load(url, None);
+            pipeline.load(url);
         }
         let rect = self.pending_sizes.pop(&(source_pipeline_id, subpage_id));
         for frame_trees.iter().advance |frame_tree| {
@@ -577,7 +582,7 @@ impl Constellation {
         if url.path.ends_with(".js") {
             pipeline.script_chan.send(ExecuteMsg(pipeline.id, url));
         } else {
-            pipeline.load(url, Some(constellation_msg::Load));
+            pipeline.load(url);
 
             self.pending_frames.push(FrameChange{
                 before: Some(source_id),
@@ -586,6 +591,7 @@ impl Constellation {
                     parent: parent,
                     children: ~[],
                 },
+                navigation_type: constellation_msg::Load,
             });
         }
         self.pipelines.insert(pipeline.id, pipeline);
@@ -627,9 +633,9 @@ impl Constellation {
 
         for destination_frame.iter().advance |frame| {
             let pipeline = &frame.pipeline;
-            pipeline.reload(Some(constellation_msg::Navigate));
+            pipeline.reload();
         }
-        self.grant_paint_permission(destination_frame);
+        self.grant_paint_permission(destination_frame, constellation_msg::Navigate);
 
     }
     
@@ -643,8 +649,6 @@ impl Constellation {
             // TODO(tkuehn): In fact, this kind of message might be provably
             // impossible to occur.
             if current_frame.contains(pipeline_id) {
-                debug!("updating compositor frame tree with %?", current_frame);
-                self.set_ids(current_frame);
                 return;
             }
         }
@@ -704,7 +708,7 @@ impl Constellation {
                     }
                 }
             }
-        self.grant_paint_permission(next_frame_tree);
+        self.grant_paint_permission(next_frame_tree, frame_change.navigation_type);
         }
     }
 
@@ -718,7 +722,8 @@ impl Constellation {
         }
         for self.navigation_context.previous.iter()
             .chain_(self.navigation_context.next.iter())
-            .advance |&@FrameTree { pipeline: ref pipeline, _ }| {
+            .advance |frame_tree| {
+            let pipeline = &frame_tree.pipeline;
             if !already_seen.contains(&pipeline.id) {
                 pipeline.script_chan.send(ResizeInactiveMsg(pipeline.id.clone(), new_size));
                 already_seen.insert(pipeline.id.clone());
@@ -727,14 +732,14 @@ impl Constellation {
     }
 
     // Grants a frame tree permission to paint; optionally updates navigation to reflect a new page
-    fn grant_paint_permission(&mut self, frame_tree: @mut FrameTree) {
+    fn grant_paint_permission(&mut self, frame_tree: @mut FrameTree, navigation_type: NavigationType) {
         // Give permission to paint to the new frame and all child frames
         self.set_ids(frame_tree);
 
         // Don't call navigation_context.load() on a Navigate type (or None, as in the case of
         // parsed iframes that finish loading)
-        match frame_tree.pipeline.navigation_type {
-            Some(constellation_msg::Load) => {
+        match navigation_type {
+            constellation_msg::Load => {
                 let evicted = self.navigation_context.load(frame_tree);
                 for evicted.iter().advance |frame_tree| {
                     // exit any pipelines that don't exist outside the evicted frame trees
