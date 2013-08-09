@@ -11,7 +11,7 @@ use windowing::{ScrollWindowEvent, ZoomWindowEvent, NavigationWindowEvent, Finis
 use windowing::{QuitWindowEvent, MouseWindowClickEvent, MouseWindowMouseDownEvent, MouseWindowMouseUpEvent};
 
 use servo_msg::compositor_msg::{RenderListener, LayerBufferSet, RenderState};
-use servo_msg::compositor_msg::{ReadyState, ScriptListener};
+use servo_msg::compositor_msg::{ReadyState, ScriptListener, Epoch};
 use servo_msg::constellation_msg::{ConstellationChan, NavigateMsg, PipelineId, ResizedWindowMsg, LoadUrlMsg};
 use servo_msg::constellation_msg;
 use gfx::opts::Opts;
@@ -78,7 +78,7 @@ impl RenderListener for CompositorChan {
         port.recv()
     }
 
-    fn paint(&self, id: PipelineId, layer_buffer_set: arc::ARC<LayerBufferSet>, epoch: uint) {
+    fn paint(&self, id: PipelineId, layer_buffer_set: arc::ARC<LayerBufferSet>, epoch: Epoch) {
         self.chan.send(Paint(id, layer_buffer_set, epoch))
     }
 
@@ -86,7 +86,7 @@ impl RenderListener for CompositorChan {
         let Size2D { width, height } = page_size;
         self.chan.send(NewLayer(id, Size2D(width as f32, height as f32)))
     }
-    fn set_layer_page_size(&self, id: PipelineId, page_size: Size2D<uint>, epoch: uint) {
+    fn set_layer_page_size(&self, id: PipelineId, page_size: Size2D<uint>, epoch: Epoch) {
         let Size2D { width, height } = page_size;
         self.chan.send(SetLayerPageSize(id, Size2D(width as f32, height as f32), epoch))
     }
@@ -138,14 +138,14 @@ pub enum Msg {
     /// Alerts the compositor that there is a new layer to be rendered.
     NewLayer(PipelineId, Size2D<f32>),
     /// Alerts the compositor that the specified layer's page has changed size.
-    SetLayerPageSize(PipelineId, Size2D<f32>, uint),
+    SetLayerPageSize(PipelineId, Size2D<f32>, Epoch),
     /// Alerts the compositor that the specified layer's clipping rect has changed.
     SetLayerClipRect(PipelineId, Rect<f32>),
     /// Alerts the compositor that the specified layer has been deleted.
     DeleteLayer(PipelineId),
 
     /// Requests that the compositor paint the given layer buffer set for the given page size.
-    Paint(PipelineId, arc::ARC<LayerBufferSet>, uint),
+    Paint(PipelineId, arc::ARC<LayerBufferSet>, Epoch),
     /// Alerts the compositor to the current status of page loading.
     ChangeReadyState(ReadyState),
     /// Alerts the compositor to the current status of rendering.
@@ -252,7 +252,7 @@ impl CompositorTask {
                     recomposite = layer.get_buffer_request(Rect(Point2D(0f32, 0f32), window_size_page),
                                                            world_zoom) || recomposite;
                 } else { 
-                    println("layer is hidden!"); //eschweic
+                    debug!("Compositor: root layer is hidden!");
                 }
             }
         };
