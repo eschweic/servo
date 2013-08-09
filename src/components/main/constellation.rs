@@ -649,6 +649,11 @@ impl Constellation {
             // TODO(tkuehn): In fact, this kind of message might be provably
             // impossible to occur.
             if current_frame.contains(pipeline_id) {
+                //debug!("updating compositor frame tree with %?", current_frame);
+                //self.set_ids(current_frame);
+                for current_frame.iter().advance |frame| {
+                    frame.pipeline.grant_paint_permission();
+                }
                 return;
             }
         }
