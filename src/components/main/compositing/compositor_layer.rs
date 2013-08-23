@@ -216,6 +216,7 @@ impl CompositorLayer {
                 self.pipeline.render_chan.send(UnusedBufferMsg(unused));
             }
             if !request.is_empty() { // ask for tiles
+                println("compositor: asking for tiles...");
                 self.pipeline.render_chan.send(ReRenderMsg(request, scale, self.epoch));
             }
         }
@@ -365,7 +366,8 @@ impl CompositorLayer {
     pub fn build_layer_tree(&mut self) {
         // Iterate over the children of the container layer.
         let mut current_layer_child = self.root_layer.first_child;
-        
+        println("compositor: building the layer tree...");        
+
         // Delete old layer.
         while current_layer_child.is_some() {
             let trash = current_layer_child.unwrap();
@@ -383,6 +385,7 @@ impl CompositorLayer {
         };
 
         let all_tiles = quadtree.get_all_tiles();
+        printfln!("compositor: putting %? tiles into the layer tree.", all_tiles.len());
         for buffer in all_tiles.iter() {
             debug!("osmain: compositing buffer rect %?", &buffer.rect);
             
@@ -438,9 +441,11 @@ impl CompositorLayer {
     // Add LayerBuffers to the specified layer. Returns false if the layer is not found.
     // If the epoch of the message does not match the layer's epoch, the message is ignored.
     pub fn add_buffers(&mut self, pipeline_id: PipelineId, new_buffers: ~LayerBufferSet, epoch: Epoch) -> bool {
+        printfln!("compositor: recieved %? tiles!", new_buffers.buffers.len());
         let cell = Cell::new(new_buffers);
         if self.pipeline.id == pipeline_id {
             if self.epoch != epoch {
+                println("compositor: ...but the epochs didn't match :(");
                 debug!("compositor epoch mismatch: %? != %?, id: %?", self.epoch, epoch, self.pipeline.id);
                 self.pipeline.render_chan.send(UnusedBufferMsg(cell.take().buffers));
                 return true;
@@ -462,9 +467,11 @@ impl CompositorLayer {
                     self.pipeline.render_chan.send(UnusedBufferMsg(unused_tiles));
                 }
             }
+            println("compositor: tiles inserted successfully!");
             self.build_layer_tree();
             true
         } else { 
+                println("compositor: ...but the pipeline ids didn't match :(");
                 // ID does not match ours, so recurse on descendents (including hidden children).
                 self.children.mut_iter().map(|x| &mut x.child)
                     .any(|x| x.add_buffers(pipeline_id, cell.take(), epoch))

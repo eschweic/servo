@@ -471,6 +471,7 @@ impl CompositorTask {
         let write_png = self.opts.output_file.is_some();
         let exit = self.opts.exit_after_load;
         let composite = || {
+            println("compositor: painting to screen");
             do profile(time::CompositingCategory, profiler_chan.clone()) {
                 debug!("compositor: compositing");
                 // Adjust the layer dimensions as necessary to correspond to the size of the window.
